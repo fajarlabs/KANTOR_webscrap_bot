@@ -10,10 +10,19 @@ import sys
 import base64
 import json
 from time import sleep
+import psycopg2
+from datetime import datetime
+import configparser
 
 # =================================================================
 # INITIAL ELEMENT
 # =================================================================
+
+_DATABASE = "postgres"
+_USER = "postgres"
+_PASSWORD = "postgres"
+_HOST = "127.0.0.1"
+_PORT = 5432
 
 URL_PIHPS = [
 	"http://hargapangan.id/tabel-harga/pedagang-besar/daerah",
@@ -34,6 +43,20 @@ EL_TABLE_ID = "report"
 # =================================================================
 # FUNCTION DEFINITION
 # =================================================================
+
+def setInit() :
+	global _DATABASE
+	global _USER
+	global _PASSWORD
+	global _HOST
+	global _PORT
+	config = configparser.ConfigParser()
+	config.read('config.ini')
+	_USER = config["DATABASE"]["username"]
+	_PASSWORD = config["DATABASE"]["password"]
+	_HOST = config["DATABASE"]["hostname"]
+	_PORT = config["DATABASE"]["port"]
+	_DATABASE = config["DATABASE"]["database"]
 
 def wait(web_opening_time=3):
 	time.sleep(web_opening_time)
@@ -137,9 +160,22 @@ def table_ui(element_id) :
 # print array to file log data.json
 def printToLog(data_list):
 	try :
-		print(data_list)
-		with open('data.json', 'a') as outfile:
-			outfile.write(json.dumps(data_list)+"\n")
+		if(len(data_list["data"]) > 1) :
+			i = 0
+			for item in data_list["data"][0] :
+				if (i > 1) :
+					try :
+						datetime_object = datetime.strptime(item, '%d/%m/%Y')
+						satuan = "Kg"
+						if (data_list["komoditas"].strip() == "Minyak Goreng") :
+							satuan = "Lt"	
+						saveKomoditas(data_list["provinsi"],data_list["komoditas"], data_list["data"][1][i],satuan,datetime_object.strftime('%Y-%m-%d'))
+					except Exception as e :
+						print(e)
+				i += 1
+		# sys.exit()
+		# with open('data.json', 'a') as outfile:
+		# 	outfile.write(json.dumps(data_list)+"\n")
 	except Exception as e :
 		print(e)
 
@@ -202,13 +238,34 @@ def process_auto_combobox() :
 
 # start scrap process
 def scrap_start():
-	process_auto_combobox()
+	while True :
+		process_auto_combobox()
 	#driver.get("https://web.whatsapp.com/")
+
+def saveKomoditas(nama_daerah, komoditas, harga, satuan, tanggal) :
+	global _DATABASE
+	global _USER
+	global _PASSWORD
+	global _HOST
+	global _PORT
+
+	con = None
+	try:
+		con = psycopg2.connect(database=_DATABASE, user=_USER,password=_PASSWORD, host = _HOST, port = _PORT)
+		cur = con.cursor()
+		cur.execute("INSERT INTO src_komonditas_pasar (nama_daerah,komonditas,harga,satuan,tanggal) VALUES ('"+nama_daerah+"','"+komoditas+"','"+harga+"','"+satuan+"','"+tanggal+"') ")
+		con.commit()
+	except psycopg2.DatabaseError as e:
+	    print(f'Error {e}')
+	finally:
+	    if con:
+	        con.close()
 
 # =================================================================
 # MAIN PROGRAM
 # =================================================================
 if __name__ == "__main__":
+	setInit()
 	# Load driver & Browser
 	web_driver_load()
 	# Waiting for login
